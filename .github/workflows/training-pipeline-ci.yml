@@ -1,0 +1,78 @@
+name: Training Pipeline CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'training_pipeline/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'training_pipeline/**'
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+          cache-dependency-path: training_pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          cd training_pipeline
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with flake8
+        run: |
+          cd training_pipeline
+          flake8 . --exclude=notebooks/
+
+      - name: Lint with pylint
+        run: |
+          cd training_pipeline
+          pylint --recursive=y . --ignore=notebooks/
+
+      - name: Check formatting with black
+        run: |
+          cd training_pipeline
+          black --check .
+
+      - name: Check imports with isort
+        run: |
+          cd training_pipeline
+          isort --check .
+
+      - name: Type checking with mypy
+        run: |
+          cd training_pipeline
+          mypy . --exclude notebooks/
+
+      - name: Lint Jupyter notebooks
+        run: |
+          cd training_pipeline
+          # Check notebooks with nbqa if they exist
+          if [ -d "notebooks" ]; then
+            nbqa flake8 notebooks/ --config=notebooks/.flake8
+            nbqa black notebooks/ --check
+            nbqa isort notebooks/ --check-only
+          fi
+
+      - name: Run unit tests
+        run: |
+          cd training_pipeline
+          pytest tests/unit/ --cov=. --cov-report=term-missing
+
+      - name: Run integration tests
+        run: |
+          cd training_pipeline
+          pytest tests/integration/ --cov=. --cov-report=term-missing 
