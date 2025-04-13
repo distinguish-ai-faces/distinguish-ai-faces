@@ -67,6 +67,7 @@ data/
 datasets/
 raw_data/
 processed_data/
+img/
 
 # Logs and temporary files
 logs/
@@ -89,6 +90,7 @@ tensorboard/
 # Secrets and configurations
 *.env
 *.ini
+!pytest.ini
 config.yaml
 secrets.yaml
 credentials.yaml
