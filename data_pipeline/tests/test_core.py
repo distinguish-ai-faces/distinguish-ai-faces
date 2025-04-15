@@ -3,12 +3,20 @@ Core tests for the data pipeline functionality.
 """
 import pytest
 import numpy as np
-from unittest.mock import Mock, patch
+import os
+from unittest.mock import Mock, patch, MagicMock
 from google.cloud import storage
 from PIL import Image
+from pathlib import Path
 
 from src.preprocess import detect_face_region, resize_and_crop_image
 from src.scrape_faces import ImageScraper, validate_image
+from src.gcp_storage import (
+    validate_bucket_access, 
+    upload_file, 
+    download_file,
+    list_bucket_files
+)
 
 @pytest.fixture
 def mock_storage_client():
@@ -86,22 +94,81 @@ def test_scraping_functionality(scraping_config):
         # Test image validation
         assert validate_image(mock_response) is True
 
-"""
-def test_gcs_integration(mock_storage_client):
-    # Test core GCS integration functionality.
+def test_gcs_bucket_access(mock_storage_client):
+    """Test bucket access validation."""
     test_bucket = "test-bucket"
-    test_file = "test_image.jpg"
     
-    with patch('google.cloud.storage.Client', return_value=mock_storage_client):
-        # Test bucket access
+    with patch('src.gcp_storage.setup_storage_client', return_value=mock_storage_client):
+        # Mock bucket.exists() to return True
         mock_storage_client.bucket.return_value.exists.return_value = True
-        assert validate_bucket_access(test_bucket) is True
         
-        # Test file upload
-        result = upload_file(test_file, test_bucket, f"images/{test_file}")
-        assert result is True
+        # Test bucket access validation
+        assert validate_bucket_access(test_bucket) is True
         mock_storage_client.bucket.assert_called_with(test_bucket)
-"""
+        
+        # Test bucket access failure
+        mock_storage_client.bucket.return_value.exists.return_value = False
+        assert validate_bucket_access(test_bucket) is False
+
+def test_gcs_upload_file(mock_storage_client, tmp_path):
+    """Test file upload to GCS bucket."""
+    test_bucket = "test-bucket"
+    
+    # Create a temporary test file
+    test_file = tmp_path / "test.jpg"
+    test_file.write_bytes(b"test image content")
+    
+    with patch('src.gcp_storage.setup_storage_client', return_value=mock_storage_client):
+        # Setup the mock blob
+        mock_blob = mock_storage_client.bucket.return_value.blob.return_value
+        
+        # Test successful upload
+        result = upload_file(test_file, test_bucket)
+        
+        assert result["success"] is True
+        assert result["bucket"] == test_bucket
+        assert result["path"] == test_file.name
+        
+        # Verify the mock calls
+        mock_storage_client.bucket.assert_called_with(test_bucket)
+        mock_storage_client.bucket.return_value.blob.assert_called_with(test_file.name)
+        mock_blob.upload_from_filename.assert_called_with(str(test_file))
+
+def test_gcs_download_file(mock_storage_client, tmp_path):
+    """Test file download from GCS bucket."""
+    test_bucket = "test-bucket"
+    cloud_path = "images/test.jpg"
+    local_path = tmp_path / "downloaded.jpg"
+    
+    with patch('src.gcp_storage.setup_storage_client', return_value=mock_storage_client):
+        # Setup the mock blob
+        mock_blob = mock_storage_client.bucket.return_value.blob.return_value
+        mock_blob.exists.return_value = True
+        
+        # Mock the download_to_filename method to create an empty file
+        def mock_download(path):
+            # Simulate file creation
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).touch()
+            
+        mock_blob.download_to_filename.side_effect = mock_download
+        
+        # Test successful download
+        result = download_file(cloud_path, local_path, test_bucket)
+        
+        assert result["success"] is True
+        assert result["bucket"] == test_bucket
+        assert result["cloud_path"] == cloud_path
+        
+        # Verify the mock calls
+        mock_storage_client.bucket.assert_called_with(test_bucket)
+        mock_storage_client.bucket.return_value.blob.assert_called_with(cloud_path)
+        mock_blob.download_to_filename.assert_called_with(str(local_path))
+        
+        # Test download failure for non-existent blob
+        mock_blob.exists.return_value = False
+        result = download_file("nonexistent.jpg", local_path, test_bucket)
+        assert result["success"] is False
 
 def test_image_format_and_size():
     """Test image format standardization and size requirements."""
@@ -113,4 +180,4 @@ def test_image_format_and_size():
     with patch('PIL.Image.open', return_value=img):
         processed = resize_and_crop_image(test_image)
         assert processed.shape == (512, 512, 3)  # Verify size
-        assert isinstance(processed, np.ndarray)  # Verify format 
+        assert isinstance(processed, np.ndarray)  # Verify format
