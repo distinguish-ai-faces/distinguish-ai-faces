@@ -1,4 +1,4 @@
-.PHONY: clean lint format test
+.PHONY: clean lint format test test-unit test-integration test-coverage
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
@@ -25,11 +25,16 @@ format:
 	isort .
 
 test:
-	pytest -v tests/unit/
-	pytest -v tests/integration/
+	PYTHONPATH=. pytest tests/
+
+test-unit:
+	PYTHONPATH=. pytest tests/ -k "not integration"
+
+test-integration:
+	PYTHONPATH=. pytest tests/ -k "integration"
 
 test-coverage:
-	pytest --cov=. --cov-report=term-missing --cov-report=xml
+	PYTHONPATH=. pytest tests/ --cov=src --cov-report=term-missing --cov-report=xml
 
 precommit:
 	pre-commit run --all-files
