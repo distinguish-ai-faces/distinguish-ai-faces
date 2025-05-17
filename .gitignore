@@ -43,6 +43,7 @@ venv.bak/
 # IDE - Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
+notebooks/train_evaluate_model.ipynb
 
 # Docker
 .docker/
@@ -97,4 +98,122 @@ credentials.yaml
 
 # System Files
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Training pipeline specific
+training_pipeline/outputs*/
+training_pipeline/*/checkpoints/
+training_pipeline/data/
+training_pipeline/notebook_outputs/
+training_pipeline/webcam_results/
+training_pipeline/results/
+*/outputs*/
+*/*_outputs/
+*/notebook_outputs/
+*/webcam_results/
+*/results/
+*/__pycache__/
+
+# Geçici dosyalar ve çıktılar
+*.tmp
+*.temp
+*.out
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Model outputs and checkpoints
+*/outputs*/
+*/checkpoints/
+*/logs/
+*/*_outputs/
+*/notebook_outputs/
+*/webcam_results/
+*/results/
+
+# Data folders (binaries)
+*/data/
+*/*/data/
+*/processed/
+
+# GCP credentials
+*.json
+credentials/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Large model files
+*.h5
+*.hdf5
+*.pkl
+*.pb
+
+# Log files
+*.log
+logs/ 

@@ -1,0 +1,359 @@
+Jupyter Notebook İçeriği
+
+Bu jupyter notebook dosyasını 'train_evaluate_model.ipynb' olarak oluşturmanız gerekiyor. Aşağıdaki içeriği bir Jupyter Notebook editöründe kullanabilirsiniz:
+
+[Markdown Hücresi]
+# AI vs Human Face Detection - Model Training and Evaluation
+
+Bu notebook, yapay zeka tarafından oluşturulan yüzleri gerçek insan yüzlerinden ayırt etmek için bir derin öğrenme modeli eğitmeyi ve değerlendirmeyi gösterir.
+
+[Kod Hücresi]
+import os
+import sys
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+
+# Notebook'un düzgün çalışması için src modülünü Python yoluna ekleyin
+module_path = os.path.abspath(os.path.join('..'))
+if module_path not in sys.path:
+    sys.path.append(module_path)
+
+# Özel modülleri içe aktarın
+from src.data import DataProcessor
+from src.model import get_model
+from src.train import train_model, evaluate_model, get_callbacks
+from src.config import get_config
+
+[Markdown Hücresi]
+## 1. Konfigürasyon
+
+Eğitim için parametreleri yapılandırın.
+
+[Kod Hücresi]
+# Yapılandırmayı alın
+model_name = 'efficientnet'  # Seçenekler: 'efficientnet', 'resnet50', 'mobilenet', 'scratch'
+config = get_config(model_name)
+
+# Yapılandırmayı özelleştirin
+config['data_config']['img_size'] = (224, 224)
+config['data_config']['batch_size'] = 32
+config['data_config']['val_split'] = 0.2
+config['data_config']['test_split'] = 0.1
+config['training_config']['epochs'] = 20
+
+# GCP yapılandırması (varsayılan olarak True, config.py'den gelir)
+# GCP'yi devre dışı bırakmak isterseniz:
+# config['data_config']['use_gcp'] = False
+
+# Özel bucket adı kullanmak isterseniz (gerekirse)
+# config['data_config']['gcp_bucket_name'] = 'wingie-devops-project'
+
+print(f"Kullanılan model: {model_name}")
+print(f"Görüntü boyutu: {config['data_config']['img_size']}")
+print(f"Yığın boyutu: {config['data_config']['batch_size']}")
+print(f"Eğitim dönemleri: {config['training_config']['epochs']}")
+print(f"GCP kullanımı: {config['data_config']['use_gcp']}")
+print(f"GCP bucket: {config['data_config']['gcp_bucket_name']}")
+
+[Markdown Hücresi]
+## 2. Veri Yükleme ve Ön İşleme
+
+Veriyi yükleyin ve model eğitimi için hazırlayın.
+
+[Kod Hücresi]
+# Veri işleyicisini başlatın
+data_processor = DataProcessor(
+    img_size=config['data_config']['img_size'],
+    batch_size=config['data_config']['batch_size'],
+    val_split=config['data_config']['val_split'],
+    test_split=config['data_config']['test_split'],
+    use_gcp=config['data_config']['use_gcp'],
+    gcp_bucket_name=config['data_config'].get('gcp_bucket_name')
+)
+
+# Veri setini yükleyin
+print("Veri seti yükleniyor...")
+try:
+    train_ds, val_ds, test_ds = data_processor.load_dataset(
+        data_dir=config['data_config'].get('data_dir'),
+        gcp_ai_folder=config['data_config'].get('gcp_ai_folder', 'ai-faces'),
+        gcp_human_folder=config['data_config'].get('gcp_human_folder', 'human-faces'),
+        local_ai_dir=config['data_config'].get('local_ai_dir', 'data/ai_faces'),
+        local_human_dir=config['data_config'].get('local_human_dir', 'data/human_faces')
+    )
+    print("Veri seti başarıyla yüklendi!")
+except Exception as e:
+    print(f"Veri yükleme hatası: {str(e)}")
+    print("\nHata genellikle veri dizini yapısının yanlış olmasından kaynaklanır. Aşağıdaki yapıyı oluşturduğunuzdan emin olun:")
+    print("""
+    data/
+      ├── ai_faces/       # Yapay zeka üretimi yüzler
+      │   └── *.jpg
+      │
+      └── human_faces/    # Gerçek insan yüzleri
+          └── *.jpg
+    """)
+
+[Markdown Hücresi]
+## 3. Veri Görselleştirme
+
+Veri setinden bazı örnekleri görselleştirin.
+
+[Kod Hücresi]
+# Eğitim setinden bazı örnekleri görselleştirin
+def visualize_dataset(dataset, class_names=['AI', 'Human'], samples=5):
+    plt.figure(figsize=(12, 8))
+    for images, labels in dataset.take(1):  # Sadece bir batch alın
+        for i in range(min(samples, len(images))):
+            plt.subplot(1, samples, i + 1)
+            plt.imshow(images[i].numpy().astype("uint8"))
+            plt.title(class_names[int(labels[i])])
+            plt.axis("off")
+    plt.tight_layout()
+    plt.show()
+
+print("Eğitim setinden örnekler:")
+visualize_dataset(train_ds)
+
+print("Doğrulama setinden örnekler:")
+visualize_dataset(val_ds)
+
+[Markdown Hücresi]
+## 4. Model Oluşturma
+
+Seçilen mimariyi kullanarak model oluşturun.
+
+[Kod Hücresi]
+# Modeli oluşturun
+print(f"{model_name} modeli oluşturuluyor...")
+model = get_model(
+    model_type=config['model_config'].get('model_type', 'pretrained'),
+    config=config['model_config']
+)
+
+# Model özetini gösterin
+model.summary()
+
+[Markdown Hücresi]
+## 5. Model Eğitimi
+
+Modeli eğitin ve eğitim metriklerini izleyin.
+
+[Kod Hücresi]
+# Çıktı dizinini ayarlayın
+output_dir = os.path.join(os.path.dirname(os.getcwd()), 'notebook_outputs')
+os.makedirs(output_dir, exist_ok=True)
+
+# Geri aramalar oluşturun
+callbacks = get_callbacks(
+    checkpoint_dir=os.path.join(output_dir, 'checkpoints'),
+    tensorboard_dir=os.path.join(output_dir, 'logs'),
+    patience=config['model_config'].get('patience', 5),
+    min_delta=config['model_config'].get('min_delta', 0.01)
+)
+
+# Modeli eğitin
+print(f"Eğitim başlıyor: {config['training_config']['epochs']} dönem")
+start_time = time.time()
+
+history = model.fit(
+    train_ds,
+    validation_data=val_ds,
+    epochs=config['training_config']['epochs'],
+    callbacks=callbacks,
+    verbose=1
+)
+
+training_time = time.time() - start_time
+print(f"Eğitim tamamlandı! Süre: {training_time:.2f} saniye")
+
+[Markdown Hücresi]
+## 6. Eğitim Metriklerini Görselleştirme
+
+Eğitim ve doğrulama metriklerini görselleştirin.
+
+[Kod Hücresi]
+# Eğitim geçmişini görselleştirin
+def plot_training_history(history):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+    
+    # Doğruluk grafiği
+    ax1.plot(history.history['accuracy'])
+    ax1.plot(history.history['val_accuracy'])
+    ax1.set_title('Model doğruluğu')
+    ax1.set_ylabel('Doğruluk')
+    ax1.set_xlabel('Dönem')
+    ax1.legend(['Eğitim', 'Doğrulama'], loc='lower right')
+    ax1.grid(True)
+    
+    # Kayıp grafiği
+    ax2.plot(history.history['loss'])
+    ax2.plot(history.history['val_loss'])
+    ax2.set_title('Model kaybı')
+    ax2.set_ylabel('Kayıp')
+    ax2.set_xlabel('Dönem')
+    ax2.legend(['Eğitim', 'Doğrulama'], loc='upper right')
+    ax2.grid(True)
+    
+    plt.tight_layout()
+    plt.show()
+
+# Metrikleri görselleştirin
+plot_training_history(history)
+
+[Markdown Hücresi]
+## 7. Model Değerlendirmesi
+
+Test seti üzerinde modeli değerlendirin ve sonuçları görselleştirin.
+
+[Kod Hücresi]
+from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc, precision_recall_curve
+
+# Test seti üzerinde modeli değerlendirin
+print("Test seti üzerinde model değerlendiriliyor...")
+
+# Test verilerini toplam 
+test_images = []
+test_labels = []
+
+for images, labels in test_ds:
+    test_images.append(images.numpy())
+    test_labels.append(labels.numpy())
+
+test_images = np.concatenate(test_images, axis=0)
+test_labels = np.concatenate(test_labels, axis=0)
+
+# Tahminleri alın
+y_pred = model.predict(test_images)
+y_pred_classes = (y_pred > 0.5).astype(int)
+
+# Doğruluğu hesaplayın
+accuracy = np.mean(y_pred_classes == test_labels)
+print(f"Test doğruluğu: {accuracy:.4f}")
+
+# Sınıflandırma raporu
+print("\nSınıflandırma raporu:")
+print(classification_report(test_labels, y_pred_classes, target_names=['AI', 'Human']))
+
+# Karışıklık matrisi
+cm = confusion_matrix(test_labels, y_pred_classes)
+print("\nKarışıklık matrisi:")
+print(cm)
+
+[Kod Hücresi]
+# Karışıklık matrisini görselleştirin
+plt.figure(figsize=(8, 6))
+plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+plt.title('Karışıklık Matrisi')
+plt.colorbar()
+tick_marks = np.arange(2)
+plt.xticks(tick_marks, ['AI', 'Human'])
+plt.yticks(tick_marks, ['AI', 'Human'])
+
+# Metin açıklamaları ekleyin
+thresh = cm.max() / 2.
+for i in range(cm.shape[0]):
+    for j in range(cm.shape[1]):
+        plt.text(j, i, format(cm[i, j], 'd'),
+                ha="center", va="center",
+                color="white" if cm[i, j] > thresh else "black")
+
+plt.tight_layout()
+plt.ylabel('Gerçek etiket')
+plt.xlabel('Tahmin edilen etiket')
+plt.show()
+
+[Kod Hücresi]
+# ROC eğrisi ve AUC
+fpr, tpr, _ = roc_curve(test_labels, y_pred)
+roc_auc = auc(fpr, tpr)
+
+plt.figure(figsize=(10, 8))
+plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC eğrisi (alan = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('Yanlış Pozitif Oranı')
+plt.ylabel('Doğru Pozitif Oranı')
+plt.title('Alıcı İşletim Karakteristiği (ROC) Eğrisi')
+plt.legend(loc="lower right")
+plt.grid(True)
+plt.show()
+
+print(f"ROC AUC: {roc_auc:.4f}")
+
+[Kod Hücresi]
+# Precision-Recall eğrisi
+precision, recall, _ = precision_recall_curve(test_labels, y_pred)
+pr_auc = auc(recall, precision)
+
+plt.figure(figsize=(10, 8))
+plt.plot(recall, precision, color='blue', lw=2, label=f'PR eğrisi (alan = {pr_auc:.2f})')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision-Recall Eğrisi')
+plt.legend(loc="lower left")
+plt.grid(True)
+plt.show()
+
+print(f"PR AUC: {pr_auc:.4f}")
+
+[Markdown Hücresi]
+## 8. Model Kaydı ve Yükleme
+
+Modeli kaydedin ve yeniden yükleyin.
+
+[Kod Hücresi]
+# Modeli kaydedin
+model_save_path = os.path.join(output_dir, 'final_notebook_model.h5')
+model.save(model_save_path)
+print(f"Model kaydedildi: {model_save_path}")
+
+# Modeli yükleyin (isterseniz)
+# from tensorflow.keras.models import load_model
+# loaded_model = load_model(model_save_path)
+# print("Model başarıyla yüklendi!")
+
+[Markdown Hücresi]
+## 9. Örnek Tahminler
+
+Test setinden bazı örnekler için tahminleri görselleştirin.
+
+[Kod Hücresi]
+# Rastgele örnekler seçin ve tahminleri görselleştirin
+def visualize_predictions(images, labels, predictions, num_samples=5):
+    # Rastgele örnekler seçin
+    indices = np.random.choice(range(len(images)), num_samples, replace=False)
+    
+    class_names = ['AI', 'Human']
+    plt.figure(figsize=(15, 3 * num_samples))
+    
+    for i, idx in enumerate(indices):
+        img = images[idx]
+        true_label = labels[idx][0]  # Binary format olduğu için [0] indeksini alın
+        pred_prob = predictions[idx][0]  # Olasılık
+        pred_label = 1 if pred_prob > 0.5 else 0
+        
+        # Doğru veya yanlış tahmin rengini belirleyin
+        color = 'green' if pred_label == true_label else 'red'
+        
+        plt.subplot(num_samples, 1, i + 1)
+        plt.imshow(img.astype("uint8"))
+        plt.title(f"Gerçek: {class_names[int(true_label)]} | Tahmin: {class_names[pred_label]} ({pred_prob:.4f})", 
+                 color=color, fontsize=14)
+        plt.axis("off")
+        
+    plt.tight_layout()
+    plt.show()
+
+# Tahminleri görselleştirin
+visualize_predictions(test_images, test_labels, y_pred, num_samples=8)
+
+[Markdown Hücresi]
+## 10. Sonuç
+
+Bu notebook'ta, yapay zeka tarafından oluşturulan yüzleri gerçek insan yüzlerinden ayırt etmek için bir derin öğrenme modeli oluşturduk, eğittik ve değerlendirdik. Modelin performansı yukarıdaki metriklerle değerlendirildi. 
