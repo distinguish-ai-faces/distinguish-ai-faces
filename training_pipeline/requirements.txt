@@ -32,4 +32,9 @@ tqdm>=4.61.2
 python-dotenv>=0.19.0
 pyyaml>=6.0
 opencv-python>=4.5.3
-tensorboard>=2.5.0 
+tensorboard>=2.5.0
+
+# Vertex AI dependencies
+google-cloud-aiplatform>=1.30.0
+docker>=6.1.0
+pyyaml>=6.0 

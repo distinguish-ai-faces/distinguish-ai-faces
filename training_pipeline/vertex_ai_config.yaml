@@ -1,0 +1,48 @@
+# Vertex AI Custom Training Job Configuration
+
+# GCP Project Configuration
+project_id: "wingie-devops-project" # GCP Project ID
+region: "us-central1" # En yaygın desteklenen Vertex AI bölgesi
+
+# Training Container Configuration
+container:
+  image_uri: "gcr.io/wingie-devops-project/ai-face-detection:latest"
+  env_vars:
+    - name: "DATA_BUCKET_NAME"
+      value: "distinguish-ai-faces-dataset"
+    - name: "MODEL_BUCKET_NAME"
+      value: "distinguish-ai-faces-model"
+    - name: "MODEL_DIR"
+      value: "models"
+    - name: "DATA_DIR"
+      value: "data"
+
+# Machine Configuration - CPU-only (trial hesap için minimum CPU)
+machine_config:
+  machine_type: "e2-standard-1" # 1 vCPU, 4 GB memory (Vertex AI trial hesap kotaları için en düşük yapılandırma)
+  # GPU kullanımını tamamen kaldırdık - Vertex AI trial hesabında GPU kotası yok
+  # accelerator_type: "NVIDIA_TESLA_V100"
+  # accelerator_count: 1
+
+# Scaling
+scale_tier: "CUSTOM"
+replica_count: 1
+
+# Storage Configuration
+staging_bucket: "gs://distinguish-ai-faces-dataset" # Data staging bucket
+output_uri_prefix: "gs://distinguish-ai-faces-model/vertex_output" # Model output bucket
+
+# Dataset Configuration
+dataset_config:
+  ai_faces_folder: "ai-faces"
+  human_faces_folder: "human-faces"
+
+# Training Configuration - Minimum CPU için optimize edilmiş
+training_params:
+  model_type: "efficientnet"
+  epochs: 1 # Hızlı test için
+  batch_size: 4 # 1 CPU için uygun batch size
+  img_size:
+    - 224
+    - 224
+  learning_rate: 0.0001
